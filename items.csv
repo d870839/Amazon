@@ -1,22 +1,22 @@
-comm,upc,item_desc,search_term,notes
-619,0000000004093,ONIONS YLLW COLOSSAL RPC,yellow onion,
-603,0000000004022,KRO GRAPES WHITE SDLS BAG,green grapes,
-619,0000000004082,ONIONS RED JUMBO,red onion,
-608,0000000004080,ASPARAGUS STANDARD,asparagus,
-617,0000000004087,TOMATOES ROMA,roma tomato,
-618,0001111091760,POTATOES RUSSET,russet potato,
-603,0000000004023,KRO GRAPES RED SDLS BAG,red grapes,
-608,0000000004068,ONIONS GREEN BUNCH RPC,green onions,
-598,0000000004062,CUCUMBERS,cucumber,
-608,0000000004070,CELERY NAKED RPC,celery,
-604,0003338320027,STRAWBERRIES,strawberries,
-608,0000000003082,BROCCOLI CROWNS,broccoli crowns,
-617,0001111091686,TOMATOES GRAPE SWEET,grape tomatoes,
-617,0000000004799,TOMATOES HYDROPONIC,beefsteak tomato,user-mapped: hydroponic listing = beefsteak/slicer
-610,0001111091620,KRO CUTPEELED BBY CARROT,baby carrots peeled,
-604,0003338322101,BLUEBERRIES RPC,blueberries,
-619,0000000004166,ONIONS VIDALIA,vidalia onion,
-618,0000000004072,POTATOES RUSSET RPC,russet potato,
-614,0000000004889,CILANTRO BUNCH RPC,cilantro,
-609,0000000004046,AVOCADOS HASS TP RPC,hass avocado,
-617,0000000004664,TOMATOES BUNCHED,tomato on the vine,user-mapped: bunched listing = on the vine
+comm,upc,item_desc,search_term,require_words,exclude_words,notes
+619,0000000004093,ONIONS YLLW COLOSSAL RPC,yellow onion,yellow|onion,shallot|powder|seed|sets|dried|freeze|pickled|ring|fried|flake|jar|soup|bouillon|extract,
+603,0000000004022,KRO GRAPES WHITE SDLS BAG,green grapes,grape|green,cotton candy|champagne|moon drop|moondrop|muscat|concord|wine|frozen|dried|juice|jelly|jam|candy|candies|sugar|raisin|seed|plant|leaf|leaves|gummy|gummies,
+619,0000000004082,ONIONS RED JUMBO,red onion,red|onion,shallot|powder|seed|sets|dried|freeze|pickled|ring|jar|sweet|vidalia|extract|fried|soup,
+608,0000000004080,ASPARAGUS STANDARD,asparagus,asparagus,powder|dried|frozen|freeze|canned|soup|jar|pickled|seed|fern|extract|capsule|tablet,
+617,0000000004087,TOMATOES ROMA,roma tomato,roma|tomato,powder|dried|paste|sauce|juice|canned|soup|jar|seed|plant|salsa|crushed|stewed,
+618,0001111091760,POTATOES RUSSET,russet potato,russet|potato,chip|fry|fries|frozen|freeze|dried|instant|mash|flake|canned|soup|seed|tot|hash,
+603,0000000004023,KRO GRAPES RED SDLS BAG,red grapes,grape|red,cotton candy|champagne|moon drop|moondrop|muscat|concord|wine|frozen|dried|juice|jelly|jam|candy|candies|sugar|raisin|seed|plant|leaf|leaves|gummy|gummies,
+608,0000000004068,ONIONS GREEN BUNCH RPC,green onions,green|onion,powder|dried|seed|sets|frozen|freeze|sweet|red|yellow|white|fried|ring|soup|chip|jar|extract|salt,
+598,0000000004062,CUCUMBERS,cucumber,cucumber,seed|plant|dried|pickled|pickle|jar|mask|slice|juice|soup|hydration|peel|extract|melon,
+608,0000000004070,CELERY NAKED RPC,celery,celery,seed|salt|powder|juice|root|dried|jar|extract|capsule|tablet|stalk powder,
+604,0003338320027,STRAWBERRIES,strawberries,strawberr,frozen|freeze|dried|jam|jelly|syrup|candy|plant|seed|jar|juice|muffin|cake|chocolate|gummy|gummies|powder|extract|cream|yogurt|smoothie,uses 'strawberr' substring to match both strawberry/strawberries
+608,0000000003082,BROCCOLI CROWNS,broccoli crowns,broccoli,sprout|seed|plant|frozen|freeze|dried|soup|canned|slaw|powder|cheese|extract|capsule|tablet|rice,
+617,0001111091686,TOMATOES GRAPE SWEET,grape tomatoes,grape|tomato,sauce|paste|dried|canned|juice|jar|seed|plant|salsa|crushed|stewed,
+617,0000000004799,TOMATOES HYDROPONIC,beefsteak tomato,beefsteak|tomato,sauce|paste|dried|canned|juice|jar|seed|plant|salsa|seedling|crushed|stewed,user-mapped: hydroponic = beefsteak/slicer
+610,0001111091620,KRO CUTPEELED BBY CARROT,baby carrots peeled,baby|carrot,seed|plant|juice|frozen|dried|candy|candies|cake|cupcake|cracker|cookie|chip|powder|extract,
+604,0003338322101,BLUEBERRIES RPC,blueberries,blueberr,frozen|freeze|dried|jam|jelly|syrup|candy|plant|seed|jar|juice|muffin|scone|cake|bagel|chocolate|gummy|gummies|powder|extract|cream|yogurt|smoothie,uses 'blueberr' substring to match both blueberry/blueberries
+619,0000000004166,ONIONS VIDALIA,vidalia onion,vidalia,shallot|powder|seed|dried|ring|jar|dressing|sauce|extract|relish,
+618,0000000004072,POTATOES RUSSET RPC,russet potato,russet|potato,chip|fry|fries|frozen|freeze|dried|instant|mash|flake|canned|soup|seed|tot|hash,
+614,0000000004889,CILANTRO BUNCH RPC,cilantro,cilantro,seed|dried|paste|sauce|jar|powder|extract|capsule|tablet|chutney,
+609,0000000004046,AVOCADOS HASS TP RPC,hass avocado,hass|avocado,oil|frozen|freeze|dried|paste|guacamole|salsa|seed|plant|mask|soap|peel|mayo|extract|powder,
+617,0000000004664,TOMATOES BUNCHED,tomato on the vine,vine|tomato,sauce|paste|dried|canned|juice|jar|seed|plant|salsa|grape|cherry|roma|beefsteak|crushed|stewed,user-mapped: bunched = on the vine

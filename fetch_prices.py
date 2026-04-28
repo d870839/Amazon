@@ -54,19 +54,52 @@ def get_list_price(item: dict) -> float | None:
     return p.get("value") if isinstance(p, dict) else None
 
 
+def parse_word_list(s: str | None) -> list[str]:
+    """Pipe-delimited list -> lowercased substring list. Empty -> [] (no constraint)."""
+    if not s or not s.strip():
+        return []
+    return [w.strip().lower() for w in s.split("|") if w.strip()]
+
+
+def title_passes_filters(title: str, require: list[str], exclude: list[str]) -> bool:
+    t = (title or "").lower()
+    if any(w not in t for w in require):
+        return False
+    if any(w in t for w in exclude):
+        return False
+    return True
+
+
 def build_search_url(search_term: str) -> str:
     return f"https://www.amazon.com/s?k={urllib.parse.quote_plus(search_term)}"
 
 
-def pick_conventional(results: list[dict]) -> dict | None:
-    """Return the first result that is non-organic and has a current price."""
-    for r in sorted(results, key=lambda x: x.get("position") or 999):
+def pick_conventional(
+    results: list[dict],
+    require: list[str],
+    exclude: list[str],
+) -> tuple[dict | None, str]:
+    """Return (chosen_result, reason). reason explains why nothing matched, if applicable."""
+    sorted_results = sorted(results, key=lambda x: x.get("position") or 999)
+    seen = len(sorted_results)
+    if seen == 0:
+        return None, "no search results returned"
+    organic_skipped = no_price_skipped = filter_skipped = 0
+    for r in sorted_results:
         if is_organic(r):
+            organic_skipped += 1
             continue
         if get_price(r) is None:
+            no_price_skipped += 1
             continue
-        return r
-    return None
+        if not title_passes_filters(r.get("title") or "", require, exclude):
+            filter_skipped += 1
+            continue
+        return r, ""
+    return None, (
+        f"no match in top {seen}: organic={organic_skipped}, "
+        f"no_price={no_price_skipped}, filter_excluded={filter_skipped}"
+    )
 
 
 def run_actor_for_zip(
@@ -110,7 +143,9 @@ def process_zip_results(
     for it in items:
         url = build_search_url(it["search_term"])
         url_results = by_url.get(url, [])
-        chosen = pick_conventional(url_results)
+        require = parse_word_list(it.get("require_words"))
+        exclude = parse_word_list(it.get("exclude_words"))
+        chosen, reason = pick_conventional(url_results, require, exclude)
         base = {
             "market": z["market"],
             "zip": z["zip"],
@@ -123,7 +158,8 @@ def process_zip_results(
             rows.append({**base,
                 "matched_asin": None, "matched_title": None,
                 "price": None, "list_price": None, "position": None,
-                "error": f"No conventional match in {len(url_results)} results",
+                "availability": "Not available",
+                "error": reason,
             })
         else:
             price = get_price(chosen)
@@ -134,6 +170,7 @@ def process_zip_results(
                 "price": round(price, 2) if price is not None else None,
                 "list_price": round(list_price, 2) if list_price is not None else None,
                 "position": chosen.get("position"),
+                "availability": "Available",
                 "error": None,
             })
     return rows
@@ -200,6 +237,7 @@ def main() -> int:
                 "item_desc": it["item_desc"], "search_term": it["search_term"],
                 "matched_asin": None, "matched_title": None,
                 "price": None, "list_price": None, "position": None,
+                "availability": "Error",
                 "error": err,
             } for it in items]
 
