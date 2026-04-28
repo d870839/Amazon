@@ -61,12 +61,24 @@ def parse_word_list(s: str | None) -> list[str]:
     return [w.strip().lower() for w in s.split("|") if w.strip()]
 
 
+def _pat(word: str) -> str:
+    """Word boundary match with optional plural suffix.
+
+    'grape' matches 'grape' and 'grapes'.
+    'tomato' matches 'tomato' and 'tomatoes'.
+    'seed' does NOT match 'seedless' (word continues past 'seed').
+    """
+    return r"\b" + re.escape(word) + r"(?:s|es)?\b"
+
+
 def title_passes_filters(title: str, require: list[str], exclude: list[str]) -> bool:
     t = (title or "").lower()
-    if any(w not in t for w in require):
-        return False
-    if any(w in t for w in exclude):
-        return False
+    for w in require:
+        if not re.search(_pat(w), t):
+            return False
+    for w in exclude:
+        if re.search(_pat(w), t):
+            return False
     return True
 
 
