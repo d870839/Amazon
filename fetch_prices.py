@@ -60,7 +60,7 @@ class Row:
     wait=wait_exponential(multiplier=2, min=2, max=16),
     reraise=True,
 )
-def search_amazon(api_key: str, search_term: str, zipcode: str, timeout: int = 60) -> dict:
+def search_amazon(api_key: str, search_term: str, zipcode: str, verify_ssl: bool = True, timeout: int = 60) -> dict:
     params = {
         "api_key": api_key,
         "type": "search",
@@ -69,7 +69,7 @@ def search_amazon(api_key: str, search_term: str, zipcode: str, timeout: int = 6
         "customer_zipcode": zipcode,
         "output": "json",
     }
-    r = requests.get(ENDPOINT, params=params, timeout=timeout)
+    r = requests.get(ENDPOINT, params=params, timeout=timeout, verify=verify_ssl)
     r.raise_for_status()
     return r.json()
 
@@ -120,7 +120,14 @@ def main() -> int:
     ap.add_argument("--workers", type=int, default=8, help="Concurrent requests (default 8)")
     ap.add_argument("--save-raw", action="store_true", help="Save full search JSON for each call")
     ap.add_argument("--dry-run", action="store_true", help="Print plan and exit")
+    ap.add_argument("--no-verify-ssl", action="store_true",
+                    help="Disable SSL verification (use only on corp networks where pip-system-certs didn't help)")
     args = ap.parse_args()
+
+    if args.no_verify_ssl:
+        import urllib3
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        print("WARNING: SSL verification disabled. Only do this on a trusted corporate network.")
 
     load_dotenv(ROOT / ".env")
     api_key = os.environ.get("RAINFOREST_API_KEY")
@@ -151,7 +158,7 @@ def main() -> int:
 
     def task(item: dict, z: dict) -> Row:
         try:
-            payload = search_amazon(api_key, item["search_term"], z["zip"])
+            payload = search_amazon(api_key, item["search_term"], z["zip"], verify_ssl=not args.no_verify_ssl)
             if args.save_raw:
                 fname = f"{item['comm']}_{item['upc']}_{z['zip']}.json"
                 (raw_dir / fname).write_text(json.dumps(payload, indent=2))
