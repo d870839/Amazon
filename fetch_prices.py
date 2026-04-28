@@ -70,7 +70,9 @@ def search_amazon(api_key: str, search_term: str, zipcode: str, verify_ssl: bool
         "output": "json",
     }
     r = requests.get(ENDPOINT, params=params, timeout=timeout, verify=verify_ssl)
-    r.raise_for_status()
+    if not r.ok:
+        body = r.text[:500] if r.text else "(empty body)"
+        raise requests.HTTPError(f"HTTP {r.status_code} for zip={zipcode} term={search_term!r}: {body}")
     return r.json()
 
 
