@@ -1,6 +1,12 @@
-"""Pull Whole Foods / Amazon Fresh prices for a list of ASINs across a list of zip codes.
+"""Pull Whole Foods conventional produce prices via Rainforest API search.
 
-Uses the Rainforest API (https://www.rainforestapi.com/). Set RAINFOREST_API_KEY in .env.
+For each (item, zip) pair: search by name + zip, then pick the first result that:
+  1. Title does NOT contain "organic" (user constraint: conventional only)
+  2. Has a price
+  3. Is tagged Whole Foods Market (preferred), then Amazon Fresh, then any
+     same-day grocery delivery match.
+
+Set RAINFOREST_API_KEY in .env. See README.md for details.
 """
 from __future__ import annotations
 
@@ -8,10 +14,11 @@ import argparse
 import csv
 import json
 import os
+import re
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -24,6 +31,9 @@ ENDPOINT = "https://api.rainforestapi.com/request"
 ROOT = Path(__file__).parent
 OUT_DIR = ROOT / "output"
 
+# Same-day grocery delivery taglines look like "$12.99 delivery Today 2PM - 6PM".
+GROCERY_DELIVERY_RE = re.compile(r"\bToday\b.*\d{1,2}(AM|PM)", re.IGNORECASE)
+
 
 @dataclass
 class Row:
@@ -32,15 +42,16 @@ class Row:
     comm: str
     upc: str
     item_desc: str
-    asin: str
+    search_term: str
+    matched_asin: str | None
+    matched_title: str | None
     price: float | None
     currency: str | None
     unit_price: str | None
-    availability: str | None
-    title: str | None
-    fulfillment: str | None
+    delivery_tagline: str | None
+    match_source: str | None  # wfm | fresh | grocery | none
+    excluded_organic_count: int
     error: str | None
-    raw_json_path: str | None
 
 
 @retry(
@@ -49,39 +60,49 @@ class Row:
     wait=wait_exponential(multiplier=2, min=2, max=16),
     reraise=True,
 )
-def fetch_one(api_key: str, asin: str, zipcode: str, timeout: int = 60) -> dict:
+def search_amazon(api_key: str, search_term: str, zipcode: str, timeout: int = 60) -> dict:
     params = {
         "api_key": api_key,
-        "type": "product",
+        "type": "search",
         "amazon_domain": "amazon.com",
-        "asin": asin,
+        "search_term": search_term,
         "customer_zipcode": zipcode,
+        "output": "json",
     }
     r = requests.get(ENDPOINT, params=params, timeout=timeout)
     r.raise_for_status()
     return r.json()
 
 
-def parse_response(payload: dict) -> dict:
-    """Pull the fields we care about out of a Rainforest product response."""
-    product = payload.get("product", {}) or {}
-    buybox = product.get("buybox_winner", {}) or {}
-    price_obj = buybox.get("price") or product.get("price") or {}
-    avail = (buybox.get("availability") or {}).get("raw")
-    fulfillment = None
-    seller = buybox.get("seller") or {}
-    if seller:
-        fulfillment = seller.get("name")
-    return {
-        "price": price_obj.get("value") if isinstance(price_obj, dict) else None,
-        "currency": price_obj.get("currency") if isinstance(price_obj, dict) else None,
-        "unit_price": (buybox.get("unit_price") or {}).get("raw")
-        if isinstance(buybox.get("unit_price"), dict)
-        else None,
-        "availability": avail,
-        "title": product.get("title"),
-        "fulfillment": fulfillment,
-    }
+def is_grocery_delivery(result: dict) -> bool:
+    tagline = ((result.get("delivery") or {}).get("tagline")) or ""
+    return bool(GROCERY_DELIVERY_RE.search(tagline))
+
+
+def pick_match(results: list[dict]) -> tuple[dict | None, str, int]:
+    """Return (chosen_result, match_source, organic_count_skipped)."""
+    organic_skipped = 0
+    candidates = []
+    for r in results:
+        title = (r.get("title") or "").lower()
+        if "organic" in title:
+            organic_skipped += 1
+            continue
+        price = ((r.get("price") or {}).get("value")) if isinstance(r.get("price"), dict) else None
+        if price is None:
+            continue
+        candidates.append(r)
+
+    for r in candidates:
+        if r.get("is_whole_foods_market"):
+            return r, "wfm", organic_skipped
+    for r in candidates:
+        if r.get("is_amazon_fresh"):
+            return r, "fresh", organic_skipped
+    for r in candidates:
+        if is_grocery_delivery(r):
+            return r, "grocery", organic_skipped
+    return None, "none", organic_skipped
 
 
 def load_inputs() -> tuple[list[dict], list[dict]]:
@@ -97,7 +118,7 @@ def main() -> int:
     ap.add_argument("--limit-items", type=int, help="Only fetch first N items (for testing)")
     ap.add_argument("--limit-zips", type=int, help="Only fetch first N zips (for testing)")
     ap.add_argument("--workers", type=int, default=8, help="Concurrent requests (default 8)")
-    ap.add_argument("--save-raw", action="store_true", help="Save full JSON for each call")
+    ap.add_argument("--save-raw", action="store_true", help="Save full search JSON for each call")
     ap.add_argument("--dry-run", action="store_true", help="Print plan and exit")
     args = ap.parse_args()
 
@@ -114,7 +135,7 @@ def main() -> int:
         zips = zips[: args.limit_zips]
 
     pairs = [(it, z) for it in items for z in zips]
-    print(f"Plan: {len(items)} items x {len(zips)} zips = {len(pairs)} requests")
+    print(f"Plan: {len(items)} items x {len(zips)} zips = {len(pairs)} requests (~${len(pairs) * 0.003:.2f} at $0.003/req)")
     if args.dry_run:
         return 0
 
@@ -130,29 +151,44 @@ def main() -> int:
 
     def task(item: dict, z: dict) -> Row:
         try:
-            payload = fetch_one(api_key, item["asin"], z["zip"])
-            parsed = parse_response(payload)
-            raw_path = None
+            payload = search_amazon(api_key, item["search_term"], z["zip"])
             if args.save_raw:
-                fname = f"{item['asin']}_{z['zip']}.json"
-                p = raw_dir / fname
-                p.write_text(json.dumps(payload, indent=2))
-                raw_path = str(p.relative_to(ROOT))
+                fname = f"{item['comm']}_{item['upc']}_{z['zip']}.json"
+                (raw_dir / fname).write_text(json.dumps(payload, indent=2))
+            results = payload.get("search_results") or []
+            chosen, source, organic_n = pick_match(results)
+            if chosen is None:
+                return Row(
+                    market=z["market"], zip=z["zip"], comm=item["comm"], upc=item["upc"],
+                    item_desc=item["item_desc"], search_term=item["search_term"],
+                    matched_asin=None, matched_title=None,
+                    price=None, currency=None, unit_price=None,
+                    delivery_tagline=None, match_source="none",
+                    excluded_organic_count=organic_n, error=None,
+                )
+            price_obj = chosen.get("price") or {}
             return Row(
                 market=z["market"], zip=z["zip"], comm=item["comm"], upc=item["upc"],
-                item_desc=item["item_desc"], asin=item["asin"],
-                price=parsed["price"], currency=parsed["currency"],
-                unit_price=parsed["unit_price"], availability=parsed["availability"],
-                title=parsed["title"], fulfillment=parsed["fulfillment"],
-                error=None, raw_json_path=raw_path,
+                item_desc=item["item_desc"], search_term=item["search_term"],
+                matched_asin=chosen.get("asin"),
+                matched_title=chosen.get("title"),
+                price=price_obj.get("value"),
+                currency=price_obj.get("currency"),
+                unit_price=chosen.get("unit_price"),
+                delivery_tagline=(chosen.get("delivery") or {}).get("tagline"),
+                match_source=source,
+                excluded_organic_count=organic_n,
+                error=None,
             )
         except Exception as e:
             return Row(
                 market=z["market"], zip=z["zip"], comm=item["comm"], upc=item["upc"],
-                item_desc=item["item_desc"], asin=item["asin"],
-                price=None, currency=None, unit_price=None, availability=None,
-                title=None, fulfillment=None,
-                error=f"{type(e).__name__}: {e}", raw_json_path=None,
+                item_desc=item["item_desc"], search_term=item["search_term"],
+                matched_asin=None, matched_title=None,
+                price=None, currency=None, unit_price=None,
+                delivery_tagline=None, match_source=None,
+                excluded_organic_count=0,
+                error=f"{type(e).__name__}: {e}",
             )
 
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
@@ -165,12 +201,12 @@ def main() -> int:
                 elapsed = time.time() - started
                 print(f"  {completed}/{len(pairs)} done ({elapsed:.1f}s)")
 
-    long_path = OUT_DIR / f"prices_long_{stamp}.csv"
     df = pd.DataFrame([r.__dict__ for r in rows])
+    long_path = OUT_DIR / f"prices_long_{stamp}.csv"
     df.to_csv(long_path, index=False)
 
     wide = df.pivot_table(
-        index=["comm", "upc", "asin", "item_desc"],
+        index=["comm", "upc", "item_desc", "search_term"],
         columns="market",
         values="price",
         aggfunc="first",
@@ -178,14 +214,21 @@ def main() -> int:
     wide_path = OUT_DIR / f"prices_wide_{stamp}.csv"
     wide.to_csv(wide_path)
 
-    errs = df[df["error"].notna()]
     print(f"\nSaved: {long_path.relative_to(ROOT)}")
     print(f"Saved: {wide_path.relative_to(ROOT)}")
-    print(f"Success: {len(df) - len(errs)} / {len(df)}    Errors: {len(errs)}")
+    src_counts = df["match_source"].value_counts(dropna=False).to_dict()
+    print(f"Match sources: {src_counts}")
+    errs = df[df["error"].notna()]
     if len(errs):
-        print("First 5 errors:")
+        print(f"Errors: {len(errs)}. First 5:")
         for _, r in errs.head().iterrows():
-            print(f"  {r['asin']} @ {r['zip']}: {r['error']}")
+            print(f"  {r['search_term']} @ {r['zip']}: {r['error']}")
+    no_match = df[(df["match_source"] == "none") & df["error"].isna()]
+    if len(no_match):
+        print(f"No-match (no conventional WFM/Fresh/grocery result): {len(no_match)}. Items affected:")
+        for it in no_match["item_desc"].unique():
+            zips_aff = no_match[no_match["item_desc"] == it]["zip"].tolist()
+            print(f"  {it}: {len(zips_aff)} zips ({zips_aff[:3]}{'...' if len(zips_aff) > 3 else ''})")
     return 0
 
 
